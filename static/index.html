@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="GitScrum AI - Công cụ quét lịch sử hoạt động GitHub theo Milestone để tự động hóa báo cáo Daily Standup, Sprint Review và cảnh báo PR tồn đọng.">
+    <title>GitScrum AI — GitHub Activity Scanner & Agile Reporting Engine</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Chart.js for visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    
+    <!-- Marked for Markdown rendering in AI Scrum Master -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <!-- App Styles -->
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-background"></div>
+
+    <!-- Header Navigation -->
+    <header class="app-header">
+        <div class="header-container">
+            <div class="brand-group">
+                <div class="brand-logo">
+                    <span class="logo-icon">⚡</span>
+                </div>
+                <div class="brand-text">
+                    <div class="brand-title">GitScrum <span class="badge-ai">AI</span></div>
+                    <div class="brand-sub">GitHub Agile Pulse & Standup Reporter</div>
+                </div>
+            </div>
+
+            <div class="header-actions">
+                <button id="btn-demo-mode" class="btn btn-secondary">
+                    <span class="btn-icon">🎮</span> Nạp Dữ Liệu Demo
+                </button>
+                <button id="btn-token-modal" class="btn btn-secondary">
+                    <span class="btn-icon">🔑</span> <span id="token-status-text">GitHub Token</span>
+                </button>
+                <button id="btn-ai-modal" class="btn btn-secondary">
+                    <span class="btn-icon">🤖</span> AI Engine
+                </button>
+                <button id="btn-webhook-modal" class="btn btn-secondary">
+                    <span class="btn-icon">🔔</span> Webhook
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <!-- Repository & Sprint Control Bar -->
+        <section class="control-panel glass-card">
+            <div class="control-row">
+                <!-- Repo input -->
+                <div class="input-field-group repo-input-group">
+                    <label for="input-repo" class="field-label">Repository (owner/repo)</label>
+                    <div class="input-with-action">
+                        <span class="input-prefix">github.com/</span>
+                        <input type="text" id="input-repo" placeholder="vd: facebook/react hoặc company/repo" value="" spellcheck="false" autocomplete="off">
+                        <button id="btn-fetch-milestones" class="btn btn-primary" title="Lấy danh sách Milestone từ GitHub">
+                            <span>Tìm Milestones</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Milestone Selector -->
+                <div class="input-field-group milestone-select-group">
+                    <label for="select-milestone" class="field-label">Chọn Sprint (GitHub Milestone)</label>
+                    <select id="select-milestone" disabled>
+                        <option value="">-- Nhập Repo và bấm Tìm Milestones --</option>
+                    </select>
+                </div>
+
+                <!-- Scan Button -->
+                <div class="input-field-group action-group">
+                    <label class="field-label">&nbsp;</label>
+                    <button id="btn-scan-sprint" class="btn btn-glow" disabled>
+                        <span class="btn-icon">🚀</span>
+                        <span class="btn-text">Quét Sprint</span>
+                        <span class="loader-spinner" style="display: none;"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Rate limit & Status Strip -->
+            <div class="status-strip">
+                <div class="rate-limit-badge" id="rate-limit-badge">
+                    <span class="status-dot green"></span>
+                    <span id="rate-limit-text">Đang kiểm tra kết nối GitHub API...</span>
+                </div>
+                <div class="current-repo-info" id="current-repo-info" style="display: none;">
+                    Đang xem: <strong id="active-repo-name">None</strong> | Milestone: <strong id="active-milestone-name">None</strong>
+                </div>
+            </div>
+        </section>
+
+        <!-- KPI Hero Metric Cards -->
+        <section class="metrics-grid" id="metrics-grid" style="display: none;">
+            <!-- Health Card -->
+            <div class="metric-card glass-card card-health">
+                <div class="card-header">
+                    <span class="metric-title">Sức khỏe Sprint</span>
+                    <span class="metric-icon">❤️</span>
+                </div>
+                <div class="metric-value-row">
+                    <div class="health-gauge" id="health-gauge-val">100</div>
+                    <div class="health-meta">
+                        <span class="badge-status" id="health-badge">Hoàn hảo</span>
+                        <span class="sub-label">Điểm rủi ro & tiến độ</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Velocity & Story Points -->
+            <div class="metric-card glass-card card-velocity">
+                <div class="card-header">
+                    <span class="metric-title">Vận tốc (Story Points)</span>
+                    <span class="metric-icon">⚡</span>
+                </div>
+                <div class="metric-value-row">
+                    <div class="metric-large" id="metric-sp-val">0 / 0</div>
+                    <div class="sp-percent" id="metric-completion-pct">0%</div>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-fill" id="metric-progress-fill" style="width: 0%;"></div>
+                </div>
+            </div>
+
+            <!-- Cycle Time -->
+            <div class="metric-card glass-card card-cycle">
+                <div class="card-header">
+                    <span class="metric-title">PR Cycle Time (Lead)</span>
+                    <span class="metric-icon">⏱️</span>
+                </div>
+                <div class="metric-value-row">
+                    <div class="metric-large" id="metric-cycle-time">0h</div>
+                    <div class="sub-badge" id="metric-cycle-badge">Thời gian merge TB</div>
+                </div>
+                <div class="metric-footer-note" id="metric-cycle-sub">Từ lúc mở PR đến khi merge</div>
+            </div>
+
+            <!-- Active Members -->
+            <div class="metric-card glass-card card-members">
+                <div class="card-header">
+                    <span class="metric-title">Thành viên đóng góp</span>
+                    <span class="metric-icon">👥</span>
+                </div>
+                <div class="metric-value-row">
+                    <div class="metric-large" id="metric-members-count">0</div>
+                    <div class="sub-badge">Developers</div>
+                </div>
+                <div class="metric-footer-note" id="metric-prs-merged">0 PRs đã merge</div>
+            </div>
+
+            <!-- Bottlenecks Warning -->
+            <div class="metric-card glass-card card-bottlenecks">
+                <div class="card-header">
+                    <span class="metric-title">Cảnh báo nghẽn PR</span>
+                    <span class="metric-icon">🚨</span>
+                </div>
+                <div class="metric-value-row">
+                    <div class="metric-large" id="metric-bottlenecks-count">0</div>
+                    <div class="sub-badge alert-badge" id="metric-bottleneck-label">0 PR nghẽn</div>
+                </div>
+                <div class="metric-footer-note" id="metric-bottleneck-sub">PR ngâm >24h-48h hoặc Changes Requested</div>
+            </div>
+        </section>
+
+        <!-- Main Content Tabs -->
+        <section class="tabs-container glass-card" id="tabs-container" style="display: none;">
+            <div class="tabs-header">
+                <button class="tab-btn active" data-tab="tab-standup">
+                    <span class="tab-icon">☀️</span> Daily Standup
+                </button>
+                <button class="tab-btn" data-tab="tab-overview">
+                    <span class="tab-icon">📊</span> Sprint Overview
+                </button>
+                <button class="tab-btn" data-tab="tab-bottlenecks">
+                    <span class="tab-icon">🚨</span> Bottlenecks Radar <span class="tab-pill" id="tab-pill-bottlenecks">0</span>
+                </button>
+                <button class="tab-btn" data-tab="tab-members">
+                    <span class="tab-icon">👥</span> Ma Trận Thành Viên
+                </button>
+                <button class="tab-btn" data-tab="tab-ai-scrum">
+                    <span class="tab-icon">🤖</span> AI Scrum Master
+                </button>
+            </div>
+
+            <div class="tab-content-wrapper">
+                <!-- TAB 1: DAILY STANDUP -->
+                <div class="tab-panel active" id="tab-standup">
+                    <div class="panel-toolbar">
+                        <div class="toolbar-info">
+                            <h3>Báo Cáo Daily Standup</h3>
+                            <p class="text-muted" id="standup-window-desc">Khung thời gian hoạt động: 24 giờ qua</p>
+                        </div>
+                        <div class="toolbar-actions">
+                            <button id="btn-copy-standup-slack" class="btn btn-secondary">
+                                <span>📋 Copy cho Slack / Discord</span>
+                            </button>
+                            <button id="btn-send-standup-webhook" class="btn btn-primary">
+                                <span>📤 Gửi Webhook</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="standup-members-grid" id="standup-members-grid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- TAB 2: SPRINT OVERVIEW -->
+                <div class="tab-panel" id="tab-overview">
+                    <div class="overview-grid">
+                        <div class="chart-box glass-inner">
+                            <h4>Phân Bổ Trạng Thái Công Việc</h4>
+                            <div class="chart-canvas-wrapper">
+                                <canvas id="chart-status-donut"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-box glass-inner">
+                            <h4>Tiến Độ Hoàn Thành Story Points</h4>
+                            <div class="chart-canvas-wrapper">
+                                <canvas id="chart-sp-bar"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="overview-stats-cards glass-inner">
+                        <div class="stat-mini">
+                            <span class="stat-lbl">Tổng đầu việc</span>
+                            <span class="stat-num" id="stat-total-items">0</span>
+                        </div>
+                        <div class="stat-mini">
+                            <span class="stat-lbl">Pull Requests</span>
+                            <span class="stat-num" id="stat-total-prs">0</span>
+                        </div>
+                        <div class="stat-mini">
+                            <span class="stat-lbl">Issues đã đóng</span>
+                            <span class="stat-num" id="stat-closed-issues">0</span>
+                        </div>
+                        <div class="stat-mini">
+                            <span class="stat-lbl">Thời gian review TB</span>
+                            <span class="stat-num" id="stat-review-time">0h</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 3: BOTTLENECKS RADAR -->
+                <div class="tab-panel" id="tab-bottlenecks">
+                    <div class="panel-toolbar">
+                        <div class="toolbar-info">
+                            <h3>Radar Cảnh Báo Điểm Nghẽn Pull Request</h3>
+                            <p class="text-muted">Các PR mở chưa được merge > 24h, > 48h hoặc bị yêu cầu sửa đổi (Changes Requested)</p>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive glass-inner">
+                        <table class="data-table" id="table-bottlenecks">
+                            <thead>
+                                <tr>
+                                    <th>Mức Độ</th>
+                                    <th>Pull Request</th>
+                                    <th>Tác Giả</th>
+                                    <th>Thời Gian Mở</th>
+                                    <th>Nguyên Nhân Nghẽn</th>
+                                    <th>Reviewer Phân Công</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-bottlenecks">
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted py-4">Chưa có dữ liệu scan.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- TAB 4: MEMBER MATRIX -->
+                <div class="tab-panel" id="tab-members">
+                    <div class="panel-toolbar">
+                        <div class="toolbar-info">
+                            <h3>Bảng Đóng Góp Của Thành Viên Trong Sprint</h3>
+                            <p class="text-muted">Thống kê số lượng PRs, Commits, Story points và công việc hoàn thành</p>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive glass-inner">
+                        <table class="data-table" id="table-members">
+                            <thead>
+                                <tr>
+                                    <th>Thành Viên</th>
+                                    <th>PR Merged</th>
+                                    <th>PR Đang Mở</th>
+                                    <th>Commits</th>
+                                    <th>Story Points Xong</th>
+                                    <th>Việc Hôm Qua</th>
+                                    <th>Vướng Mắc</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-members">
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted py-4">Chưa có dữ liệu.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- TAB 5: AI SCRUM MASTER -->
+                <div class="tab-panel" id="tab-ai-scrum">
+                    <div class="panel-toolbar">
+                        <div class="toolbar-info">
+                            <h3>AI Scrum Master Insights</h3>
+                            <p class="text-muted">Đánh giá và tóm tắt tự động toàn bộ tình hình Sprint & khuyến nghị cho cuộc họp hôm nay</p>
+                        </div>
+                        <div class="toolbar-actions">
+                            <button id="btn-regen-ai" class="btn btn-secondary">
+                                <span>⚡ Tái tạo nhận xét AI</span>
+                            </button>
+                            <button id="btn-copy-ai-markdown" class="btn btn-primary">
+                                <span>📋 Copy Báo Cáo AI</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="ai-report-container glass-inner" id="ai-report-container">
+                        <div class="ai-loading" id="ai-loading-state" style="display: none;">
+                            <div class="loader-pulse"></div>
+                            <p>AI Scrum Master đang phân tích khối lượng công việc và nhịp độ team...</p>
+                        </div>
+                        <div class="ai-content markdown-body" id="ai-content-body">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Initial Blank / Welcome State -->
+        <section class="welcome-box glass-card" id="welcome-box">
+            <div class="welcome-content">
+                <div class="welcome-icon">⚡</div>
+                <h2>Chào mừng đến với GitScrum AI!</h2>
+                <p>Công cụ hỗ trợ Scrum Master và Tech Lead tự động hóa báo cáo Daily Standup, theo dõi vận tốc Sprint và giải phóng điểm nghẽn Pull Request.</p>
+                <div class="welcome-steps">
+                    <div class="step-card">
+                        <span class="step-num">1</span>
+                        <h4>Nhập Repository</h4>
+                        <p>Nhập tên repo GitHub (vd: <code>company/repo</code>) và tìm Milestones.</p>
+                    </div>
+                    <div class="step-card">
+                        <span class="step-num">2</span>
+                        <h4>Chọn Milestone</h4>
+                        <p>Mỗi GitHub Milestone tương ứng với 1 Sprint đang chạy hoặc đã đóng.</p>
+                    </div>
+                    <div class="step-card">
+                        <span class="step-num">3</span>
+                        <h4>Báo Cáo Tức Thì</h4>
+                        <p>Tự động xuất Standup 3 cột, phát hiện PR quá hạn và gửi Slack Webhook 1 chạm.</p>
+                    </div>
+                </div>
+                <div class="welcome-actions">
+                    <button id="btn-welcome-demo" class="btn btn-glow">
+                        <span>🎮 Trải Nghiệm Thử Ngay Với Dữ Liệu Mẫu (Demo)</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal: GitHub Token Configuration -->
+    <div class="modal-overlay" id="modal-token" style="display: none;">
+        <div class="modal-card glass-card">
+            <div class="modal-header">
+                <h3>🔑 Cấu Hình GitHub Personal Access Token</h3>
+                <button class="modal-close" data-close="modal-token">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-desc">
+                    GitHub hạn chế <strong>60 yêu cầu/giờ</strong> với tài khoản ẩn danh. Nhập Token cá nhân (Classic PAT hoặc Fine-Grained) để nâng giới hạn lên <strong>5,000 yêu cầu/giờ</strong> và quét được cả <strong>Private Repositories</strong>.
+                </p>
+                <div class="input-field-group">
+                    <label for="input-gh-token" class="field-label">GitHub Token (ghp_... hoặc github_pat_...)</label>
+                    <input type="password" id="input-gh-token" placeholder="Dán token của bạn vào đây..." autocomplete="off">
+                </div>
+                <p class="text-hint">🔒 Token chỉ được lưu trong <code>localStorage</code> trên trình duyệt của bạn, hoàn toàn bảo mật và không lưu trên server.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="btn-clear-token">Xóa Token</button>
+                <button class="btn btn-primary" id="btn-save-token">Lưu & Kiểm Tra</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: AI Configuration -->
+    <div class="modal-overlay" id="modal-ai" style="display: none;">
+        <div class="modal-card glass-card">
+            <div class="modal-header">
+                <h3>🤖 Cấu Hình AI Scrum Master</h3>
+                <button class="modal-close" data-close="modal-ai">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="input-field-group">
+                    <label for="select-ai-provider" class="field-label">Engine Phân Tích</label>
+                    <select id="select-ai-provider">
+                        <option value="heuristic">Heuristic Engine Tích Hợp (Mặc định - 100% Miễn Phí, Tức Thì, Chạy Offline)</option>
+                        <option value="gemini">Google Gemini API (gemini-1.5-flash / gemini-2.0-flash)</option>
+                        <option value="openai">OpenAI API (gpt-4o-mini)</option>
+                    </select>
+                </div>
+                <div class="input-field-group" id="group-ai-key" style="display: none;">
+                    <label for="input-ai-key" class="field-label">API Key</label>
+                    <input type="password" id="input-ai-key" placeholder="Nhập API key tương ứng...">
+                </div>
+                <div class="input-field-group">
+                    <label for="input-custom-prompt" class="field-label">Yêu cầu bổ sung cho AI (Tùy chọn)</label>
+                    <textarea id="input-custom-prompt" rows="2" placeholder="vd: Nhắc nhở team chú ý kiểm thử kỹ trước ngày release..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="btn-save-ai">Áp Dụng Cấu Hình</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Webhook Dispatch -->
+    <div class="modal-overlay" id="modal-webhook" style="display: none;">
+        <div class="modal-card glass-card">
+            <div class="modal-header">
+                <h3>🔔 Gửi Báo Cáo Qua Webhook</h3>
+                <button class="modal-close" data-close="modal-webhook">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="input-field-group">
+                    <label for="select-webhook-platform" class="field-label">Nền Tảng Gửi</label>
+                    <select id="select-webhook-platform">
+                        <option value="slack">Slack (Incoming Webhook URL)</option>
+                        <option value="discord">Discord (Channel Webhook URL)</option>
+                        <option value="telegram">Telegram (Bot Token & Chat ID)</option>
+                    </select>
+                </div>
+
+                <!-- Webhook URL field for Slack/Discord -->
+                <div class="input-field-group" id="group-webhook-url">
+                    <label for="input-webhook-url" class="field-label">Webhook URL</label>
+                    <input type="url" id="input-webhook-url" placeholder="https://hooks.slack.com/... hoặc https://discord.com/api/webhooks/...">
+                </div>
+
+                <!-- Telegram specific fields -->
+                <div id="group-telegram-fields" style="display: none;">
+                    <div class="input-field-group">
+                        <label for="input-telegram-token" class="field-label">Telegram Bot Token</label>
+                        <input type="password" id="input-telegram-token" placeholder="vd: 123456789:ABCdefGhIJK...">
+                    </div>
+                    <div class="input-field-group">
+                        <label for="input-telegram-chat-id" class="field-label">Telegram Chat ID</label>
+                        <input type="text" id="input-telegram-chat-id" placeholder="vd: -1001234567890 hoặc @my_channel">
+                    </div>
+                </div>
+
+                <div class="preview-box">
+                    <span class="preview-title">Xem trước nội dung gửi:</span>
+                    <pre class="preview-code" id="webhook-preview-text">Chưa có dữ liệu scan.</pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary modal-close" data-close="modal-webhook">Hủy</button>
+                <button class="btn btn-primary" id="btn-dispatch-webhook">
+                    <span>🚀 Bắn Báo Cáo Ngay</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
